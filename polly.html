@@ -1,0 +1,481 @@
+<!doctype html>
+<html>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+	<meta charset="UTF-8">
+	<title>Polly</title>
+	<link rel="icon" sizes="200x200" href="polly.png">
+	<script>
+	window.onerror = function(message, source, lineno, colno, error)
+    {
+        if (error && error.stack) {
+            // Если доступна информация о стеке вызовов, также логируем её
+            alert("Stack trace: \n"+error.stack);
+        }
+        else {
+			alert("Exception: "+message+"\n"+
+            "Source: "+source+"\n"+
+            "Line: "+lineno+"\n"+
+            "Column: "+colno+"\n");
+        }
+    }
+	</script>
+	<style>
+	html { height: 100%; font-family: sans-serif; }
+	body { width: 100%; height: 100%; margin: 0; padding: 0; }
+	/* main { display: -webkit-box; display: flex; height: 100%; } */
+	select, textarea, button, input { margin: 0.3em 0.5em; vertical-align: middle; }
+	textarea { width: 95%; min-height:270px }
+	#main { display: inline-block; vertical-align: top; width: 60%; min-width: 320px; padding-top: 0.5em; }
+	#history { display: inline-block; vertical-align: top; width: 39%; }
+	h4 { margin: 0.5em 0.3em; }
+	h5 { margin: 0.5em 0em; padding: 2px; }
+	h6 { margin: 0em; padding: 0.5em 3em 0.5em 0.5em; background: #eee; }
+	pre, xmp { font: 10px sans-serif; border-top: 0px solid silver; margin: 0em; padding: 0.5em; max-width: 320px; white-space: pre-wrap;  }
+	footer { width: 99%; white-space: nowrap; overflow: hidden; }
+	#history h5 { color:white;background:#aaa; }
+	#history a { float: right; margin: -1.8em 0.5em 0; color: silver; text-decoration: none; border-bottom: 1px dotted silver; font-size: 70%; }
+	#image { display: block; max-width: 99%; }
+	@media (max-width: 500px) {
+		#history { display: block; vertical-align: top; width: 99%; }
+	}
+	</style>
+</head>
+<body onload="setTimeout('start()', 500);"><section id="main">
+	<select id="model" style="width:120px" oninput="refresh_models(event, this)" onchange="refresh_models(event, this)">
+	<option value="openai-fast">openai-fast</option>
+	<option value="gemini-fast">gemini-fast</option>
+	<option value="mistral">mistral</option>
+	<option value="nova-micro" selected>nova-micro</option>
+	<option value="grok">grok</option>
+	<option value="qwen">qwen</option>
+	<option value="qwen">nomnom</option>
+	<option value="refresh">(show all)</option>
+	</select><button onclick="send(event, this)" style="margin-left:0;">Ask</button><button onclick="refresh_models(event, this)" style="display:none">R</button><button onclick="gen_image(event, this, 'flux')">flux</button><button onclick="gen_image(event, this, 'turbo')" style="margin-left:0;margin-right:0;">turbo</button><br>
+	<textarea id="chat" onkeypress="chat_keypress(event)">---system---
+Отвечай коротко.
+---user---
+</textarea><br>
+	<footer>
+	<button id="send_btn" onclick="send(event, this)">&nbsp; Ask &nbsp;</button>&nbsp;<button onclick="undo_send(event, this)">Back</button>
+	<button onclick="save_as(event, this)" style="float:right;">Set</button><button id="file_show" onclick="show_hide_file(event)"><svg xmlns="http://www.w3.org/2000/svg" width="7" height="12" viewBox="0 0 20 42" preserveAspectRatio="xMaxYMax"><path d="m 19.82255,6.1167161 c 0,0 0.619123,21.1606109 -0.0227,27.2951889 C 18.788464,43.078773 3.2082381,43.85098 1.6553113,33.233443 0.83366369,27.61574 1.8341926,6.9686414 1.8341926,6.9686414 1.8843724,-0.39845816 15.062506,-0.74411999 15.018588,7.0460431 L 14.874229,32.651919 c -0.02157,3.82597 -7.9476704,4.789138 -8.2361292,0.0093 C 6.4170277,28.997997 6.5179873,10.92189 6.5179873,10.92189" style="fill:none;stroke:#000000;stroke-width:2.64582;"/></svg></button><input id="save_dialog" style="float:right;width:6em;" value="" placeholder="Dialog name"><input id="save_id" style="float:right;width:8em;display:none;"></input>
+	<div style="display:none"><input id="file" type="file" onchange="onchange_file(event);"><br>
+	<input id="file_url" type="url" value="" placeholder="URL"></div>
+	</footer>
+	<div><i style="position:absolute;z-index:-1;max-width:400px"></i><img id="image" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Loading..."></div>
+</section><section id="history">
+<h5 onclick="refresh_history()">Dialogs</h5>
+</section></body>
+<script>
+	var API_KEY = localStorage.getItem('pkey') || '';
+
+	function start()
+	{
+		var now = new Date();
+		var sess_id = now.getFullYear()+
+			'-'+
+			(now.getMonth()<9?'0':'')+(now.getMonth()+1)+
+			'-'+
+			(now.getDate()<10?'0':'')+now.getDate()+
+			' '+now.toString().replace(/[a-z ]+ [0-9]+ [0-9]+ ([0-9:]+).*/i, '$1');
+		// сессия
+		document.querySelector('#save_id').value = sess_id;
+		// (new Date()).toISOString().replace(/(....-..-..)T(..:..:..).*/, '$1 $2');
+
+		refresh_history();
+
+		var chat = document.querySelector('#chat');
+		chat.scrollTop = 9999999;
+		chat.focus();
+		chat.selectionStart = chat.value.length;
+
+		if(API_KEY == '') {
+			var key = prompt('Security or Public key:', '');
+			if(key) localStorage.setItem('pkey', API_KEY = key);
+		}
+	}
+
+	function refresh_models(ev, btn) {
+
+		if((ev.type == 'input' || ev.type == 'change') && ev.target.nodeName == 'SELECT' && ev.target.value == 'refresh')
+			return refresh_models({}, {});
+		else
+		if((ev.type == 'input' || ev.type == 'change') && ev.target.nodeName == 'SELECT')
+			return;
+
+		// уже обновляется?
+		if(document.querySelector('#model').style.opacity == 0.5) return;
+
+		// индицируем что начали обновление
+		document.querySelector('#model').style.opacity = 0.5;
+		setTimeout(function(){ document.querySelector('#model').style.opacity = 1.0; }, 5000);
+
+		//xhr('', 'https://text.pollinations.ai/models?key='+API_KEY, 'GET', function(event){
+		xhr('', 'https://gen.pollinations.ai/text/models?key='+API_KEY, 'GET', function(event){
+			if(event.target.readyState != 4) return;
+			console.log(event.target.responseText);
+
+			var models = JSON.parse(event.target.responseText);
+			var html = [];
+			for(var i in models) if(models[i].name)
+			{
+				var descr = (models[i].description.split(' - ') || [models[i].description])[0] + ' - '+//(models[i].pricing.promptTextTokens*1000)+'/'+
+				((models[i].pricing.completionTextTokens||0)*1000000);
+				html.push('<option value="'+models[i].name+'">'+descr+'</option>');
+			}
+			document.querySelector('#model').innerHTML = html.join('');
+			document.querySelector('#model').style.opacity = 1.0;
+		});
+	}
+
+	function save_as(ev, btn) {
+		if(ev.altKey) {
+			var text = document.querySelector('#chat').value;
+			var save_id = prompt('save_id', '');
+			if(!save_id) return;
+			localStorage.setItem(
+				save_id,
+				text
+			);
+			return;
+		}
+
+		update_hist_item();
+		/*var text = document.querySelector('#chat').value;
+		var dialog = document.querySelector('#save_dialog').value,
+		localStorage.setItem(
+			document.querySelector('#save_id').value,
+			text
+		);*/
+		refresh_history();
+	}
+
+	function load_from_history(ev, node)
+	{
+		var id = node.parentNode.dataset.id;
+		var dialog = node.parentNode.dataset.dialog
+		var text = localStorage[id];
+		if(!text) return;
+
+		text = text.replace(/^===dialog===\n[^\n]+\n/, '');
+
+		var new_chat_pos = text.lastIndexOf('===new_chat===');
+		if(new_chat_pos > -1) {
+			text = text.substring(new_chat_pos+15);
+		}
+
+		if(text.length > 5000 && confirm('Length = '+text.length+'! Load full?') == false)
+			text = text.substring(0, 5000);
+
+		document.querySelector('#save_id').value = id;
+		document.querySelector('#chat').value = text;
+		document.querySelector('#save_dialog').value = (dialog || 'Default') == 'Default' ? '' : dialog;
+
+		return true;
+	}
+
+	function delete_in_history(ev, node, id) {
+		localStorage.removeItem(id);
+		//refresh_history();
+		node.parentNode.parentNode.removeChild(node.parentNode);
+	}
+
+	function refresh_history()
+	{
+		var dialogs = {};
+		var dialogs_order = [];
+
+		var keys = Object.keys(localStorage).sort();
+		var last_day;
+		for(var i=keys.length-1; i>=0; i--)
+		{
+			var save_id = keys[i];
+			var save_data = localStorage.getItem(save_id) || '';
+
+			// непонятная запись -> пропускаем
+			if(!save_data.indexOf || save_data.indexOf('---') == -1)
+				continue;
+
+			if(save_id.match(/[0-9]+-[0-9]{2}-[0-9]{2}/))
+			{
+				// диалог
+				var dialog = save_data.match(/^===dialog===\n([^\n]+)/) || [0, 'Default'];
+				if(dialog[1] in dialogs == false)
+					dialogs[dialog[1]] = [];
+
+				var hist_record = ['<article data-id="'+save_id+'" data-dialog="'+dialog[1]+'"><h6 onclick="load_from_history(event, this)">',
+				save_id,
+				'</h6><a href="javascript:void(0)" onclick="delete_in_history(event, this, \''+save_id+'\')">DEL</a>',
+				'<xmp ondblclick="load_from_history(event, this)" onclick="this.innerHTML=localStorage.getItem(this.parentNode.dataset.id);this.removeAttribute(\'onclick\');">',
+				save_data
+					.replace(/^===dialog===\n[^\n]+\n/m, '')
+					.substring(0,400)
+					.replace(/\n/g, ' '),
+				'...</xmp></article>'];
+
+				// if(last_day != save_id.substring(0, 10)) {
+					// last_day = save_id.substring(0, 10);
+					//hist_record = '<h4>'+(new Date(last_day)).toString().replace(/[a-zA-Z]+ ([a-z]+) ([0-9]+).*/i, '$2 $1')+'</h4>'+hist_record;
+				// }
+				dialogs[dialog[1]].push(hist_record.join(''));
+
+				// сортировка диалогов
+				if(dialogs_order.indexOf(dialog[1]) == -1)
+					dialogs_order.push(dialog[1]);
+			}
+			/*else
+				html.push('<h6 id="'+save_id+'" onclick="load_from_history(event, this)">'+save_id+'</h6><a href="javascript:void(0)" onclick="delete_in_history(event, this)">DEL</a><xmp ondblclick="load_from_history(event, {id:\''+save_id+'\'})">'+localStorage.getItem(save_id).substring(0,400).replace(/\n/g, ' ')+'...</xmp>');*/
+		}
+
+		var html = ['<h4 onclick="refresh_history()">Dialogs</h4>'];
+
+		for(var i=0; i<dialogs_order.length; i++)
+		{
+			html.push('<div style="height:2em;overflow:hidden;"><h5 onclick="show_hide_history(event, this)" ondblclick="document.querySelector(\'#save_dialog\').value=this.innerHTML">'+dialogs_order[i]+'</h5>');
+			html.push(dialogs[dialogs_order[i]].join(''));
+			html.push('</div>');
+		}
+
+		document.querySelector('#history').innerHTML = html.join('');
+		//document.querySelector('#history').scrollTop = 999999;
+	}
+
+	function show_hide_history(event, h5) {
+		if(!h5.parentNode.style.height)
+			h5.parentNode.style.height = '2em';
+		else
+			h5.parentNode.style.height = null;
+	}
+
+	function update_hist_item()
+	{
+		var save_id = document.querySelector('#save_id').value;
+		var save_dialog = document.querySelector('#save_dialog').value;
+		var save_content = localStorage.getItem(save_id) || '';
+
+		// добавляем текущий чат после new_chat
+		if(save_content && save_content.lastIndexOf('\n===new_chat===\n') > -1) {
+			var last_pos = save_content.lastIndexOf('\n===new_chat===\n');
+			save_content = save_content.substring(0, last_pos+16)+document.querySelector('#chat').value;
+		}
+		// или просто заменяем на содержимое нового чата
+		else {
+			save_content = document.querySelector('#chat').value;
+		}
+
+		// удаляем старый dialog
+		if(save_content.indexOf('===dialog===') > -1) {
+			save_content = save_content.substring(save_content.match(/^===dialog===\n[^\n]+\n/)[0].length);
+		}
+		// добавляем новый если есть
+		if(save_dialog != '')
+			save_content = '===dialog===\n'+save_dialog+'\n'+save_content;
+
+		// сохраняем
+		localStorage.setItem(save_id, save_content);
+	}
+
+	function send(ev, btn) {
+
+		btn.disabled = true;
+		setTimeout(function(){ btn.disabled = null; }, 10000);
+
+		// парсим чат
+		var messages = [];
+		var chat = document.querySelector('#chat');
+		var chat_text = chat.value;
+		var parts = chat_text.split(/\n---user---\n?/);
+		for(var i=0; i < parts.length; i++)
+		{
+			var part = parts[i];
+			if(part.match(/^---system---/)) {
+				messages.push({role: 'system', content: part.replace(/^---system---\n/, '')});
+			}
+			else if(part.match(/\n---ass?istant---\n/)) {
+				var subparts = part.split(/\n---ass?istant---\n/);
+				messages.push({role: 'user', content: subparts[0]});
+				messages.push({role: 'assistant', content: subparts[1]});
+			}
+			else {
+				messages.push({role: 'user', content: part});
+			}
+		}
+		console.log(messages);
+
+		// прикреплённое изображение
+		var image_url = '';
+		var file = document.getElementById('file');
+		var file_url = document.getElementById('file_url');
+		if(file_url.value != '')
+			image_url = file_url.value;
+		else
+		if(file.files.length && window.file_data) {
+			image_url = "data:image/jpeg;base64,"+btoa(window.file_data);
+		}
+		if(image_url != '') {
+			var last_mess = messages[messages.length-1];
+			last_mess.content = [
+				{type: "text", text: last_mess.content},
+				{type: "image_url",
+				image_url: {url: image_url}}
+			];
+		}
+
+		// формируем запрос
+		var req = {
+			model: document.getElementById("model").value,
+			private: true,
+			seed: Math.round(Math.random()*1000000),
+			messages: messages
+		};
+
+		var xhr = new XMLHttpRequest();
+		//xhr.open('POST', 'https://text.pollinations.ai/openai');
+		xhr.open('POST', 'https://gen.pollinations.ai/v1/chat/completions');
+		xhr.setRequestHeader('Content-Type', 'application/json');
+		xhr.setRequestHeader('Accept', 'application/json');
+		if(API_KEY && API_KEY != '')
+		xhr.setRequestHeader('Authorization', 'Bearer '+ API_KEY);
+		xhr.onreadystatechange = function(event){
+			if(event.target.readyState != 4) {
+				return;
+			}
+			window.resp = xhr.responseText;
+			//alert(xhr.responseText);
+			try {
+				var resp = JSON.parse(xhr.responseText || '{}');
+				console.log(resp);
+				if(resp.choices && resp.choices.length)
+				{
+					var last_msg = resp.choices[resp.choices.length-1];
+					if(last_msg.message.content.length > 5000) {
+						if(confirm('Response length '+last_msg.message.content.length+'. Show full response?') == false)
+							last_msg.message.content = last_msg.message.content.substring(0, 5000);
+					}
+					chat.value += '\n---'+last_msg.message.role+'---\n'+
+						last_msg.message.content+
+						'\n---user---\n';
+					chat.scrollTop = 9999999;  // прокручиваем чат к ответу
+					chat.focus(); // ставим курсор на наш ответ
+
+					// сохраним в истории
+					//var hist_id = (new Date()).toISOString().replace(/(....-..-..)T(..:..:..).*/, '$1 $2');
+					//localStorage.setItem(hist_id, chat.value);
+					update_hist_item();
+				}
+				else {
+					if(resp.error) {
+						alert(resp.error.message);
+					}
+					else {
+						alert('resp.choices is empty!');
+					}
+				}
+				setTimeout("document.getElementById('send_btn').innerHTML = '&nbsp; Ask &nbsp;';", 100);
+				//document.getElementById('send_btn').innerHTML = '&nbsp; Send &nbsp;';
+				btn.disabled = null;
+			} catch(ex) {
+				//alert(ex);
+				alert(xhr.responseText);
+				btn.disabled = null;
+			}
+		};
+		xhr.send(JSON.stringify(req));
+	}
+
+	function undo_send(event, btn)
+	{
+		var chat = document.querySelector('#chat')
+
+		var last_pos = chat.value.lastIndexOf('---assistant---');
+		if(last_pos > -1) {
+			chat.value = chat.value.substring(0, last_pos-1);
+		}
+		else
+		{
+			last_pos = chat.value.lastIndexOf('---user---');
+			if(last_pos>0) last_pos += 10;
+			chat.value = chat.value.substring(0, last_pos) + '\n';
+		}
+
+		// сохраним в истории
+		var ses_id = document.querySelector('#save_id').value;
+		var ses_content = localStorage.getItem(ses_id) || document.querySelector('#chat').value;
+		localStorage.setItem(ses_id, ses_content+'\n===new_chat===\n'+document.querySelector('#chat').value);
+	}
+
+	function chat_keypress(event) {
+		if(event.ctrlKey && (event.keyCode == 13 || event.keyCode == 10))
+			document.getElementById('send_btn').click();
+	}
+
+	function show_hide_file(event) {
+		var file = document.getElementById('file');
+		var panel = file.parentNode;
+		if(panel.style.display == 'none') {
+			panel.style.display = 'block';
+		}
+		else {
+			panel.style.display = 'none';
+			file.value = null;
+			window.file_data = '';
+			document.getElementById('file_url').value = '';
+		}
+	}
+
+	function onchange_file(event) {
+		var file = event.target.files[0];
+		var reader = new FileReader();
+
+		reader.onload = function(ev) {
+			window.file_data = ev.target.result;
+		};
+
+		reader.readAsBinaryString(file);
+	}
+
+	function gen_image(ev, btn, model) {
+		btn.disabled = true;
+		setTimeout(function(){ btn.disabled = null; }, 5000);
+
+		var chat = document.querySelector("#chat");
+		var parts = chat.value.split(/\n---[^-]+---\n/);
+		var prompt = parts[parts.length-1];
+		if(prompt[0] == '"') prompt = prompt.substring(1).replace(/".*$/mi,'');
+		if(prompt.indexOf('![')) prompt = prompt.replace(/!\[.*/,''); // вырезаем MD ссылку
+
+		var image = document.querySelector("#image");
+		image.parentNode.firstChild.innerHTML = 'Prompt ('+model+'): '+prompt;
+		image.parentNode.style.minHeight = "300px";
+		image.style.opacity = 0.5;
+		//image.src = "https://image.pollinations.ai/prompt/"+
+		image.src = "https://gen.pollinations.ai/image/"+
+		encodeURIComponent(prompt)+
+		'?model='+model+
+		'&seed='+Math.round(Math.random()*9999999)+
+		'&enhance=true&safe=false'+
+		'&key='+API_KEY;
+		image.title = 'Prompt ('+model+'): '+prompt;
+		image.onload = function(){ this.style.opacity = 1.0; };
+		image.onerror = function(event){
+			console.error(event);
+			alert('Image generation fail!');
+		};
+
+		// сохраним в истории, пригодится
+		update_hist_item();
+	}
+
+	function xhr(data, url, method, callback) {
+		var xhr = new XMLHttpRequest();
+		xhr.open(method || 'GET', url || 'http://127.0.0.1/', true);
+		xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+		xhr.onreadystatechange = callback || function(){
+			if(xhr.readyState != 4 || xhr.responseText == '') return;
+			console.log(xhr.responseText);
+		};
+		xhr.send(data);
+		return xhr;
+	}
+</script>
+</html>
