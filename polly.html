@@ -35,36 +35,37 @@
 	footer { width: 99%; white-space: nowrap; overflow: hidden; }
 	#history h5 { color:white;background:#aaa; }
 	#history a { float: right; margin: -1.8em 0.5em 0; color: silver; text-decoration: none; border-bottom: 1px dotted silver; font-size: 70%; }
+	.history-group { overflow: hidden; margin-left: 1%; }
 	#image { display: block; max-width: 99%; }
-	@media (max-width: 500px) {
+	@media (max-width: 576px) {
+		#main { width: 100%; }
 		#history { display: block; vertical-align: top; width: 99%; }
 	}
 	</style>
 </head>
 <body onload="setTimeout('start()', 500);"><section id="main">
-	<select id="model" style="width:120px" oninput="refresh_models(event, this)" onchange="refresh_models(event, this)">
+	<select id="model" style="width:120px" oninput="refresh_models(event, this)" onchange="refresh_models(event, this)" tile="Choose (show all) to see all models">
 	<option value="openai-fast">openai-fast</option>
 	<option value="gemini-fast">gemini-fast</option>
 	<option value="mistral">mistral</option>
-	<option value="nova-micro" selected>nova-micro</option>
-	<option value="grok">grok</option>
-	<option value="qwen">qwen</option>
-	<option value="qwen">nomnom</option>
+	<option value="nova-micro">nova-micro</option>
+	<option value="nomnom">nomnom</option>
+	<option value="polly" selected>polly</option>
 	<option value="refresh">(show all)</option>
-	</select><button onclick="send(event, this)" style="margin-left:0;">Ask</button><button onclick="refresh_models(event, this)" style="display:none">R</button><button onclick="gen_image(event, this, 'flux')">flux</button><button onclick="gen_image(event, this, 'turbo')" style="margin-left:0;margin-right:0;">turbo</button><br>
+	</select><button onclick="send(event, this)" style="margin-left:0;" title="Ask LLM (Ctrl+Enter)">Ask</button><button onclick="refresh_models(event, this)" style="display:none">R</button><button onclick="gen_image(event, this, 'flux')" title="Generate image">image</button><br>
 	<textarea id="chat" onkeypress="chat_keypress(event)">---system---
-Отвечай коротко.
+Reply briefly.
 ---user---
 </textarea><br>
 	<footer>
-	<button id="send_btn" onclick="send(event, this)">&nbsp; Ask &nbsp;</button>&nbsp;<button onclick="undo_send(event, this)">Back</button>
-	<button onclick="save_as(event, this)" style="float:right;">Set</button><button id="file_show" onclick="show_hide_file(event)"><svg xmlns="http://www.w3.org/2000/svg" width="7" height="12" viewBox="0 0 20 42" preserveAspectRatio="xMaxYMax"><path d="m 19.82255,6.1167161 c 0,0 0.619123,21.1606109 -0.0227,27.2951889 C 18.788464,43.078773 3.2082381,43.85098 1.6553113,33.233443 0.83366369,27.61574 1.8341926,6.9686414 1.8341926,6.9686414 1.8843724,-0.39845816 15.062506,-0.74411999 15.018588,7.0460431 L 14.874229,32.651919 c -0.02157,3.82597 -7.9476704,4.789138 -8.2361292,0.0093 C 6.4170277,28.997997 6.5179873,10.92189 6.5179873,10.92189" style="fill:none;stroke:#000000;stroke-width:2.64582;"/></svg></button><input id="save_dialog" style="float:right;width:6em;" value="" placeholder="Dialog name"><input id="save_id" style="float:right;width:8em;display:none;"></input>
+	<button id="send_btn" onclick="send(event, this)" title="Ask LLM (Ctrl+Enter)">&nbsp; Ask &nbsp;</button>&nbsp;<button onclick="undo_send(event, this)" title="Delete last answer of LLM">Back</button>
+	<button onclick="save_as(event, this)" style="float:right;" title="Set the chat group name">Set</button><button id="file_show" onclick="show_hide_file(event)" style="margin-right:0;margin-left:0;"><svg xmlns="http://www.w3.org/2000/svg" width="7" height="12" viewBox="0 0 20 42" preserveAspectRatio="xMaxYMax"><path d="m 19.82255,6.1167161 c 0,0 0.619123,21.1606109 -0.0227,27.2951889 C 18.788464,43.078773 3.2082381,43.85098 1.6553113,33.233443 0.83366369,27.61574 1.8341926,6.9686414 1.8341926,6.9686414 1.8843724,-0.39845816 15.062506,-0.74411999 15.018588,7.0460431 L 14.874229,32.651919 c -0.02157,3.82597 -7.9476704,4.789138 -8.2361292,0.0093 C 6.4170277,28.997997 6.5179873,10.92189 6.5179873,10.92189" style="fill:none;stroke:#000000;stroke-width:2.64582;"/></svg></button><input id="save_dialog" style="float:right;width:6em;margin-right:0;" value="" placeholder="Chat group name"><input id="save_id" style="float:right;width:8em;display:none;"></input>
 	<div style="display:none"><input id="file" type="file" onchange="onchange_file(event);"><br>
 	<input id="file_url" type="url" value="" placeholder="URL"></div>
 	</footer>
 	<div><i style="position:absolute;z-index:-1;max-width:400px"></i><img id="image" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==" alt="Loading..."></div>
 </section><section id="history">
-<h5 onclick="refresh_history()">Dialogs</h5>
+<h5 onclick="refresh_history()" title="Click/tap to refresh">Chat groups</h5>
 </section></body>
 <script>
 	var API_KEY = localStorage.getItem('pkey') || '';
@@ -119,8 +120,7 @@
 			var html = [];
 			for(var i in models) if(models[i].name)
 			{
-				var descr = (models[i].description.split(' - ') || [models[i].description])[0] + ' - '+//(models[i].pricing.promptTextTokens*1000)+'/'+
-				((models[i].pricing.completionTextTokens||0)*1000000);
+				var descr = (models[i].description.split(' - ') || [models[i].description])[0] /*+ ' - '+((models[i].pricing.completionTextTokens||0)*1000000)*/;
 				html.push('<option value="'+models[i].name+'">'+descr+'</option>');
 			}
 			document.querySelector('#model').innerHTML = html.join('');
@@ -137,6 +137,27 @@
 				save_id,
 				text
 			);
+			return;
+		}
+
+		var group_name = document.getElementById('save_dialog').value;
+		if(group_name.match(/^export.history/i)) {
+			var history_data = {};
+			var keys = Object.keys(localStorage).sort();
+			for(var i=keys.length-1; i>=0; i--)
+			{
+				var save_id = keys[i];
+				var save_data = localStorage.getItem(save_id) || '';
+				history_data[save_id] = save_data;
+			}
+			document.querySelector('#chat').value = JSON.stringify(history_data);
+			return;
+		}
+		if(group_name.match(/^import.history/i)) {
+			var history_data = JSON.parse(document.querySelector('#chat').value);
+			for(var key in history_data)
+				localStorage.setItem(key, history_data[key]);
+			refresh_history();
 			return;
 		}
 
@@ -231,7 +252,7 @@
 
 		for(var i=0; i<dialogs_order.length; i++)
 		{
-			html.push('<div style="height:2em;overflow:hidden;"><h5 onclick="show_hide_history(event, this)" ondblclick="document.querySelector(\'#save_dialog\').value=this.innerHTML">'+dialogs_order[i]+'</h5>');
+			html.push('<div class="history-group" style="height:2em;"><h5 onclick="show_hide_history(event, this)" ondblclick="document.querySelector(\'#save_dialog\').value=this.innerHTML">'+dialogs_order[i]+'</h5>');
 			html.push(dialogs[dialogs_order[i]].join(''));
 			html.push('</div>');
 		}
@@ -277,13 +298,16 @@
 
 	function send(ev, btn) {
 
-		btn.disabled = true;
-		setTimeout(function(){ btn.disabled = null; }, 10000);
-
 		// парсим чат
 		var messages = [];
 		var chat = document.querySelector('#chat');
 		var chat_text = chat.value;
+
+		if(chat_text.match(/^reset.key/i)) {
+			localStorage.removeItem('pkey');
+			return;
+		}
+
 		var parts = chat_text.split(/\n---user---\n?/);
 		for(var i=0; i < parts.length; i++)
 		{
@@ -328,6 +352,10 @@
 			seed: Math.round(Math.random()*1000000),
 			messages: messages
 		};
+
+		// блокируем кнопку как индикатор отправки
+		btn.disabled = true;
+		setTimeout(function(){ btn.disabled = null; }, 10000);
 
 		var xhr = new XMLHttpRequest();
 		//xhr.open('POST', 'https://text.pollinations.ai/openai');
@@ -441,21 +469,25 @@
 		var chat = document.querySelector("#chat");
 		var parts = chat.value.split(/\n---[^-]+---\n/);
 		var prompt = parts[parts.length-1];
+		if(prompt == '') prompt = parts[parts.length-2];
 		if(prompt[0] == '"') prompt = prompt.substring(1).replace(/".*$/mi,'');
 		if(prompt.indexOf('![')) prompt = prompt.replace(/!\[.*/,''); // вырезаем MD ссылку
+		var seed = Math.round(Math.random()*9999999);
 
 		var image = document.querySelector("#image");
-		image.parentNode.firstChild.innerHTML = 'Prompt ('+model+'): '+prompt;
+		image.parentNode.firstChild.innerHTML = 'Prompt ('+seed+'): '+prompt;
 		image.parentNode.style.minHeight = "300px";
 		image.style.opacity = 0.5;
-		//image.src = "https://image.pollinations.ai/prompt/"+
-		image.src = "https://gen.pollinations.ai/image/"+
-		encodeURIComponent(prompt)+
-		'?model='+model+
-		'&seed='+Math.round(Math.random()*9999999)+
-		'&enhance=true&safe=false'+
-		'&key='+API_KEY;
-		image.title = 'Prompt ('+model+'): '+prompt;
+		image.src = [
+		"https://image.pollinations.ai/prompt/",
+		//"https://gen.pollinations.ai/image/",
+		encodeURIComponent(prompt),
+		'?seed='+seed,
+		'&model='+model,
+		//'&enhance=true&safe=false',
+		//'&key='+API_KEY,
+		].join('');
+		image.title = 'Prompt ('+seed+'): '+prompt;
 		image.onload = function(){ this.style.opacity = 1.0; };
 		image.onerror = function(event){
 			console.error(event);
