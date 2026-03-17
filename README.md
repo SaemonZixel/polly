@@ -1,5 +1,6 @@
 # polly
-Chat with LLM using Pollinatations.ai API.
+Chat with LLM using [Pollinations.ai](https://pollinations.ai) API.
+
 
 It works in a web browser. You can save the polly.html file to your 'Desktop' and run it locally in the browser.
 
